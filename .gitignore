@@ -1,0 +1,19 @@
+# virtual environment
+.venv/
+
+# Jupyter checkpoints
+.ipynb_checkpoints/
+__pycache__/
+*.py[cod]
+
+# raw transaction files — too large for GitHub (148 MB / 51 MB)
+# store these in cloud storage (S3, GDrive, etc.) and share the link separately
+consumer_cards_MDQ.parquet
+business_cards_MDQ.parquet
+
+# generated model artifacts (large)
+*.joblib
+
+# OS
+.DS_Store
+Thumbs.db

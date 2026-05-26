@@ -1,0 +1,7 @@
+# Pyrefly static-analysis config.
+# Skip the virtualenv and the archived earlier solution so the IDE Problems
+# panel only reflects the live, modular pipeline.
+project-excludes = [
+    "**/.venv/**",
+    "archive/**",
+]
