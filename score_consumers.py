@@ -49,10 +49,7 @@ def main():
     })
     print(profile.round(3).to_string())
 
-    he[[ID_COL, "oof_p"] + cmp_cols[1:]].to_csv(LEADS_FILE, index=False)
-    print(f"\nsaved {LEADS_FILE} ({len(he)} rows)")
-
-    # ---- SHAP: global drivers (on a sample) ----
+    # ---- SHAP: global drivers (on a sample) + per-lead reason codes ----
     model = make_lgbm().fit(X, y)
     expl = shap.TreeExplainer(model)
     samp = X.sample(min(4000, len(X)), random_state=42)
@@ -61,13 +58,48 @@ def main():
     print("\n=== SHAP global mean|impact| (top 15) ===")
     print(glob.head(15).round(4).to_string())
 
-    # ---- SHAP reason codes for the single highest-scoring hidden entrepreneur ----
-    top1 = he.iloc[[0]][feats]
-    contrib = pd.Series(shap_positive_values(expl, top1)[0],
-                        index=feats).sort_values(key=np.abs, ascending=False)
-    print(f"\n=== reason codes: top lead card={he.iloc[0][ID_COL]} P={he.iloc[0]['oof_p']:.3f} ===")
+    # Full-model SHAP is used only for explanations. The lead scores above remain OOF.
+    lead_sv = shap_positive_values(expl, he[feats])
+    reason_cols = {
+        "reason_1": [],
+        "reason_2": [],
+        "reason_3": [],
+        "why_business": [],
+    }
+    for i, (_, row) in enumerate(he.iterrows()):
+        contrib = pd.Series(lead_sv[i], index=feats)
+        top3 = contrib.abs().sort_values(ascending=False).head(3).index
+        top_business = contrib[contrib > 0].sort_values(ascending=False).head(3).index
+        reasons = []
+        for feat in top3:
+            direction = "business" if contrib[feat] > 0 else "consumer"
+            reasons.append(
+                f"{feat}={row[feat]:.4g}; SHAP={contrib[feat]:+.4f}; pushes_to={direction}"
+            )
+        business_reasons = [
+            f"{feat}={row[feat]:.4g}; SHAP={contrib[feat]:+.4f}"
+            for feat in top_business
+        ]
+        for col, value in zip(["reason_1", "reason_2", "reason_3"], reasons):
+            reason_cols[col].append(value)
+        reason_cols["why_business"].append(" | ".join(business_reasons))
+
+    for col, values in reason_cols.items():
+        he[col] = values
+
+    export_cols = [ID_COL, "oof_p"] + cmp_cols[1:] + [
+        "reason_1", "reason_2", "reason_3", "why_business"
+    ]
+    he[export_cols].to_csv(LEADS_FILE, index=False)
+    print(f"\nsaved {LEADS_FILE} ({len(he)} rows, with SHAP reason codes)")
+
+    print("\n=== SHAP reason codes for all hidden-entrepreneur leads ===")
     print("(positive SHAP pushes toward 'business')")
-    print(contrib.head(10).round(4).to_string())
+    for _, row in he.iterrows():
+        print(f"\ncard={row[ID_COL]} P={row['oof_p']:.3f}")
+        print(f"  1) {row['reason_1']}")
+        print(f"  2) {row['reason_2']}")
+        print(f"  3) {row['reason_3']}")
 
 
 if __name__ == "__main__":

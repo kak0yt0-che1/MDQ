@@ -35,6 +35,8 @@ cross-validation, and models.
 | `mdq_utils.py` | Shared helpers: metrics, threshold tuning, OOF scoring, SHAP, plots |
 | `train_eval.py` | Train + evaluate the three models; persist the main model |
 | `score_consumers.py` | Out-of-fold consumer scoring + hidden-entrepreneur leads + SHAP |
+| `math_justification.py` | Statistical tests, metric/threshold analysis, calibration and plots for defense |
+| `docs/mathematical_justification.md` | Mathematical justification: why features work, how metrics/thresholds/errors are computed |
 | `build_notebook.py` | Regenerates `notebook.ipynb` from the modules |
 | `notebook.ipynb` | Presentation deliverable (EDA -> leakage -> models -> SHAP -> leads) |
 | `*.parquet`, `*.joblib`, `*.csv` | Generated artifacts |
@@ -55,6 +57,10 @@ cross-validation, and models.
 - **Thresholds.** Tuned on **train out-of-fold** scores (never the validation set).
   Recall-leaning point for outreach lists (a missed SME costs more than a cheap call);
   F1-max for automated tariff migration.
+- **Mathematical defense.** `docs/mathematical_justification.md` explains the formulas
+  behind feature groups, ROC-AUC / PR-AUC / F1, Bayes threshold choice, expected loss,
+  calibration, and error analysis. `math_justification.py` generates supporting tests
+  and plots under `plots/`.
 
 ## Key result & caveat
 
