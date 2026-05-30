@@ -1,14 +1,11 @@
-"""Card-level feature engineering for hidden-entrepreneur detection.
+"""Aggregate raw transactions into one row per card.
 
-Aggregates raw transactions (one row per transaction) into one row per card.
-Importable from the notebook:  from features import build_card_features, load_labeled
-Or run standalone to materialize features_card_level.parquet:
-    .venv/Scripts/python.exe features.py
+Run standalone (`python features.py`) to materialize features_card_level.parquet,
+or import build_card_features / load_labeled from the notebook.
 
-Leakage policy (see EDA): card_tier is dropped (perfect giveaway); raw mcc /
-merchant_id are NOT one-hot encoded (class-exclusive values are coverage
-artifacts). B2B exposure is measured via a *domain-curated* MCC list below, not
-via which codes happen to be business-exclusive in this sample.
+Leakage notes: card_tier and bank_name are dropped before modeling; raw mcc and
+merchant_id are not one-hot encoded; B2B exposure goes through a curated MCC list
+defined in config.py (5122 excluded, see README).
 """
 from __future__ import annotations
 import numpy as np

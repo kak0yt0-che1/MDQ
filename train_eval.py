@@ -93,7 +93,7 @@ def main():
     # ---- threshold tuning on TRAIN out-of-fold preds (not the val set) ----
     oof = oof_proba(make_lgbm, Xtr, ytr)
     thr = tune_thresholds(ytr, oof)
-    print(f"\nTuned on TRAIN OOF -> F1-max thr={thr['f1']:.3f} | recall>=0.95 thr={thr['recall']:.3f}")
+    print(f"\nTuned on TRAIN OOF -> F1-max thr={thr['f1']:.3f} | outreach (prec>=0.5) thr={thr['outreach']:.3f}")
 
     # ---- final evaluation of the main model on VAL ----
     lgbm = fitted["LightGBM"]
@@ -102,7 +102,7 @@ def main():
     print("ranking:", {k: round(v, 4) for k, v in ranking_metrics(yva, pva).items()})
     _print_point("default", metrics_at_threshold(yva, pva, 0.50))
     _print_point("F1-max", metrics_at_threshold(yva, pva, thr["f1"]))
-    _print_point("recall>=0.95", metrics_at_threshold(yva, pva, thr["recall"]))
+    _print_point("outreach (prec>=0.5)", metrics_at_threshold(yva, pva, thr["outreach"]))
     print("\nclassification report @ F1-max:")
     print(classification_report(yva, (pva >= thr["f1"]).astype(int),
                                 target_names=["consumer", "business"], digits=4))
@@ -114,7 +114,7 @@ def main():
 
     # ---- persist artifacts for SHAP + consumer scoring ----
     joblib.dump({"model": lgbm, "features": feats,
-                 "thr_f1": thr["f1"], "thr_recall": thr["recall"]}, MODEL_FILE)
+                 "thr_f1": thr["f1"], "thr_outreach": thr["outreach"]}, MODEL_FILE)
     print(f"\nsaved {MODEL_FILE}")
 
 

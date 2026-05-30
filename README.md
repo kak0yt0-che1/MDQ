@@ -1,30 +1,36 @@
-# Hidden-Entrepreneur Detection from Card Transactions
+# Hidden-Entrepreneur Detection — Mastercard Data Quest
 
 Classify each card as **consumer (0)** vs **business / hidden entrepreneur (1)** from
 transaction behavior, then score the consumer pool to surface clients who behave like
 businesses and should move to business products (POS acquiring, working-capital loans,
 payroll, cash management, bookkeeping).
 
+## Submission deliverables
+
+- **`notebook.ipynb`** — single self-contained notebook (the only code artifact required by
+  the brief). Runs top to bottom on the labeled parquets and produces every result.
+- **`submission.csv`** — one row per `card_number` with `score = P(business)`.
+- **`hidden_entrepreneurs.csv`** — ranked consumer leads + per-card SHAP reason codes.
+
 ## How to run
 
-```bash
-# 1. create / activate the environment (Windows PowerShell shown)
+```powershell
+# 1. create / activate the environment (Windows PowerShell)
 python -m venv .venv
-.venv\Scripts\Activate.ps1
+.\.venv\Scripts\Activate.ps1
 pip install -r requirements.txt
 
-# 2. run the pipeline end-to-end (scripts)
+# 2. fastest path — re-execute the notebook in place
+python -m nbconvert --to notebook --execute --inplace notebook.ipynb
+# (in an IDE: select the "Python (MDQ .venv)" kernel and Run All)
+
+# 3. OR run the dev scripts (same logic, also writes the same artifacts)
 python features.py         # raw tx -> features_card_level.parquet  (~1 min)
 python train_eval.py       # LogReg / LightGBM / RF -> model_lgbm.joblib
 python score_consumers.py  # OOF scoring -> hidden_entrepreneurs.csv + SHAP
-
-# 3. OR run the notebook from scratch, top to bottom
-python -m nbconvert --to notebook --execute --inplace notebook.ipynb
-# (in an IDE, select the "Python (MDQ .venv)" kernel and Run All)
 ```
 
-Everything is deterministic: a single `SEED = 42` in `config.py` drives the split,
-cross-validation, and models.
+Reproducibility: a single `SEED = 42` drives the split, the 5-fold CV, and every model.
 
 ## File map
 
@@ -35,8 +41,6 @@ cross-validation, and models.
 | `mdq_utils.py` | Shared helpers: metrics, threshold tuning, OOF scoring, SHAP, plots |
 | `train_eval.py` | Train + evaluate the three models; persist the main model |
 | `score_consumers.py` | Out-of-fold consumer scoring + hidden-entrepreneur leads + SHAP |
-| `math_justification.py` | Statistical tests, metric/threshold analysis, calibration and plots for defense |
-| `docs/mathematical_justification.md` | Mathematical justification: why features work, how metrics/thresholds/errors are computed |
 | `build_notebook.py` | Regenerates `notebook.ipynb` from the modules |
 | `notebook.ipynb` | Presentation deliverable (EDA -> leakage -> models -> SHAP -> leads) |
 | `*.parquet`, `*.joblib`, `*.csv` | Generated artifacts |
@@ -57,15 +61,13 @@ cross-validation, and models.
 - **Thresholds.** Tuned on **train out-of-fold** scores (never the validation set).
   Recall-leaning point for outreach lists (a missed SME costs more than a cheap call);
   F1-max for automated tariff migration.
-- **Mathematical defense.** `docs/mathematical_justification.md` explains the formulas
-  behind feature groups, ROC-AUC / PR-AUC / F1, Bayes threshold choice, expected loss,
-  calibration, and error analysis. `math_justification.py` generates supporting tests
-  and plots under `plots/`.
 
 ## Key result & caveat
 
 All models separate the two synthetic populations almost perfectly (ROC-AUC ≈ 1.0). This is
 a property of the **synthetic data**, not real-world performance — re-baseline on real
-labeled cards before trusting any threshold. The consumer pool contains essentially **no
-embedded hidden entrepreneurs** (~13 of 80,000 score business-like); on real data the same
-pipeline would surface a far larger population.
+labeled cards before trusting any absolute threshold. The consumer pool contains
+essentially **no embedded hidden entrepreneurs** (~11 of 80 000 score business-like); on
+real data the same pipeline would surface a far larger population. The **durable value**
+is the feature engineering, the leakage controls, the OOF scoring framework, and the
+per-card SHAP reason codes — those transfer regardless of dataset.
