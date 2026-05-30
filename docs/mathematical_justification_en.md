@@ -28,7 +28,7 @@ Objective: construct a feature vector $\mathbf{x}_c \in \mathbb{R}^{35}$ for eac
 
 $$f: \mathbb{R}^{35} \to [0, 1], \quad f(\mathbf{x}_c) = P(\text{business} \mid \mathbf{x}_c)$$
 
-Data: ~80,000 consumer cards (label = 0) and ~20,000 business cards (label = 1).
+Data: 80,000 consumer cards (label = 0) and 25,000 business cards (label = 1) — 105,000 cards total, positive rate ≈ 0.2381.
 
 📌 **For the slide:** *Each card → 35 numerical features → "business" probability. The unit of analysis is the card, not the individual transaction.*
 
@@ -55,14 +55,14 @@ For card $c$ with transaction amounts $a_1, a_2, \ldots, a_n$:
 
 $$CV = \frac{\sigma}{\mu}$$
 
-CV is a dimensionless measure of relative variability. For business cards, $CV$ is typically higher: purchases exhibit heterogeneous amounts (ranging from small office supplies to massive inventory wholesale shipments), whereas consumer spending resides within a significantly narrower scope.
+CV is a dimensionless measure of relative variability *normalized by the mean*. In our data, consumer cards show **higher** $CV$ (mean $CV \approx 1.94$) than business cards ($CV \approx 1.39$): although the absolute spread of business amounts is larger, business spending also lives on a much higher mean (procurement, payroll, rent), so the *relative* spread is tighter. Consumers, by contrast, mix small everyday purchases with rare large ones around a small mean, which inflates the ratio. The signal therefore goes the opposite way from naive intuition — and the model picks it up.
 
 ### Economic Justification
 
 Business cards demonstrate:
 - **A higher median ticket** (`amt_median` business/consumer mean ratio ≈ 3.99×, SHAP |impact| ≈ 0.05): commercial procurement tasks dwarf everyday domestic retail purchases.
-- **Higher variance in transaction amounts**: covering a diverse spectrum from cheap stationery up to large wholesale lots.
-- **Greater overall transaction count**: due to frequent, recurring operational expenditures.
+- **Larger absolute amount spread** (`amt_std` ratio ≈ 2.30×): wholesale orders co-exist with small operational purchases. Note that the *relative* spread (`amt_cv = σ/μ`) is actually **lower** for businesses (~1.39 vs ~1.94 for consumers) — the mean grows faster than the spread.
+- **Similar transaction count** to consumers in the synthetic data (~120 tx per card on either side), so the volume signal lives in `amt_sum`, not `tx_count`.
 
 ### Statistical Significance
 
@@ -126,7 +126,7 @@ $$\hat{p} \pm z_{\alpha/2}\sqrt{\frac{\hat{p}(1-\hat{p})}{n}}$$
 
 ### Definition of the B2B Basket
 
-An expert-vetted basket containing 40 specific MCC codes ($\mathcal{M}_{B2B}$) has been isolated, including:
+An expert-vetted basket containing 43 specific MCC codes ($\mathcal{M}_{B2B}$) has been isolated, including:
 - Wholesale/distribution codes: 5044, 5045, 5046, 5047, ...
 - Professional services: 7311, 7321, 7333, 7338, ...
 - Logistics & infrastructure: 4214, 4215, 4225, 4816
@@ -175,7 +175,7 @@ where $s_m$ represents the transaction count share of card $c$ at merchant $m$, 
 - $HHI \in [1/M_c,\ 1]$
 - $HHI = 1$ → all transactions occur at a single merchant (absolute concentration).
 - $HHI = 1/M_c$ → transactions are distributed perfectly equally (absolute diversification).
-- HHI maps directly to the variance of shares combined with the square of their mean: $HHI = \text{Var}(s) + \bar{s}^2$
+- The mean and variance of the per-merchant share are related to HHI by the standard moment identity $\mathbb{E}[s^2] = \text{Var}(s) + \bar{s}^2$. Since $\bar{s} = 1/M_c$ and $\mathbb{E}[s^2] = HHI / M_c$, this gives $HHI = M_c \cdot \text{Var}(s) + 1/M_c$ — concentration grows with the dispersion of shares around the uniform baseline.
 
 ### Shannon Entropy
 
@@ -371,10 +371,10 @@ Our current experimental layout yields a **ROC-AUC of 1.0000**, implying perfect
 
 ### Model Results
 
-| Classifier Algorithm | ROC-AUC | PR-AUC | F1-Score |
+| Classifier Algorithm | ROC-AUC | PR-AUC | F1 @ F1-max |
 |----------------------|---------|--------|----------|
 | Logistic Regression (Baseline) | 1.0000 | 1.0000 | 0.9996 |
-| **LightGBM (Primary Champion)** | **1.0000** | **1.0000** | **0.9996** |
+| **LightGBM (Primary Champion)** | **1.0000** | **1.0000** | **0.9999** |
 | Random Forest | 1.0000 | 1.0000 | 0.9995 |
 
 📌 **For the slide:** *ROC-AUC = $P(\text{Score}_{\text{Biz}} > \text{Score}_{\text{Consumer}})$, making it identical to the Wilcoxon statistic. A value of 1.0 indicates perfect class separation within the engineered feature space.*
@@ -385,7 +385,7 @@ Our current experimental layout yields a **ROC-AUC of 1.0000**, implying perfect
 
 ### Why PR-AUC for Imbalanced Data
 
-The sample structure contains 80,000 consumer portfolios versus 20,000 commercial cards ($\approx 4:1$ class balance ratio). Under class imbalances, ROC-AUC evaluations can sometimes yield overly optimistic conclusions.
+The sample structure contains 80,000 consumer portfolios versus 25,000 commercial cards (≈ 3.2 : 1 class balance ratio, positive prevalence 0.238). Under class imbalances, ROC-AUC evaluations can sometimes yield overly optimistic conclusions.
 
 **Mathematical Driver:** $\text{FPR} = \text{FP} / N_{\text{neg}}$. When $N_{\text{neg}}$ is substantial, even high absolute false positive counts ($\text{FP}$) are compressed by the massive denominator, forcing the FPR artificially low and masking performance flaws.
 
@@ -403,11 +403,11 @@ $$\text{PR-AUC} = \sum_{k} (R_k - R_{k-1}) \cdot P_k$$
 
 For an uninformative random classifier, the performance floor maps strictly to the positive class prevalence:
 
-$$\text{PR-AUC}_{\text{random}} = \frac{n_+}{n_+ + n_-} = \frac{20,000}{100,000} = 0.20$$
+$$\text{PR-AUC}_{\text{random}} = \frac{n_+}{n_+ + n_-} = \frac{25{,}000}{105{,}000} \approx 0.238$$
 
 Our achieved empirical performance of **PR-AUC = 1.0000** represents a massive lift over the uninformative random baseline floor.
 
-📌 **For the slide:** *PR-AUC focuses directly on class imbalances. The uninformative baseline floor sits at 0.20 (the proportion of businesses). Achieving 1.0 indicates flawless precision profiles preserved across all operating recall benchmarks.*
+📌 **For the slide:** *PR-AUC focuses directly on class imbalances. The uninformative baseline floor sits at ≈ 0.238 (the proportion of businesses). Achieving 1.0 indicates flawless precision profiles preserved across all operating recall benchmarks.*
 
 ---
 
@@ -435,7 +435,7 @@ $$F_\beta = (1 + \beta^2) \cdot \frac{P \cdot R}{\beta^2 \cdot P + R}$$
 
 Configuring $\beta > 1$ weights Recall more heavily (minimizing missed opportunities), whereas setting $\beta < 1$ prioritizes strict Precision accuracy constraints.
 
-📌 **For the slide:** *The $F_1$ metric is the harmonic mean of precision and recall. It penalizes severe imbalances, preventing models from hiding extreme recall blind spots behind an artificially inflated precision score. Our top configuration stabilizes at 0.9996.*
+📌 **For the slide:** *The $F_1$ metric is the harmonic mean of precision and recall. It penalizes severe imbalances, preventing models from hiding extreme recall blind spots behind an artificially inflated precision score. Our LightGBM at the F1-max threshold reaches 0.9999 on validation.*
 
 ---
 
@@ -526,7 +526,7 @@ $$\hat{p}_{\text{OOF}}(c) = f_{\neg k(c)}(\mathbf{x}_c), \quad c \in \text{fold 
 
 ### Key Operational Advantages
 
-- Threshold selection leverages roughly 80% of total available data vectors (the entire training set), ensuring high stability.
+- Threshold selection is computed on the **entire training set** (every row gets an OOF score from a model that did not train on it). The held-out validation set (~20% of the full data) is reserved for the final unbiased metric.
 - Unbiased final metrics avoid cross-contamination leakage.
 - Aligns with best practices in production ML engineering and Kaggle competition frameworks.
 
@@ -586,7 +586,7 @@ where $\pi_+ = N_+ / N$ and $\pi_- = N_- / N$ represent the underlying positive 
 
 ### Concrete Cost Breakdown Example
 
-Assuming baseline parameters $C_{FP} = 1$, $C_{FN} = 10$, $N_- = 80,000$, and $N_+ = 20,000$:
+Assuming baseline parameters $C_{FP} = 1$, $C_{FN} = 10$, $N_- = 80{,}000$, and $N_+ = 25{,}000$ (validation share: 16 000 vs 5 000):
 
 | Operating Threshold | FP Count | FN Count | Global Expected Loss ($\mathcal{L}$) |
 |---------------------|----------|----------|----------------------------------------|
@@ -728,13 +728,13 @@ The notebook ships a self-contained appendix that operationalizes the theory abo
 
 > **Core Talking Points for the Evaluation Committee:**
 >
-> “We engineered 35 distinct behavioral features at the card profile level, structured across six independent behavioral dimensions, each backed by a clear economic driver. The strongest predictors center on B2B exposure metrics, tracking transaction density within wholesale and commercial MCC blocks. This core B2B profile relies on an expert-curated basket of 40 MCC categories that avoids data-driven target leakage; for example, MCC 5122 was intentionally excluded because it was perfectly correlated with business labels in the sample. Furthermore, we leverage Herfindahl-Hirschman Indices and Shannon Entropy to quantify merchant concentration, separating diversified corporate procurement from narrow consumer habits. Finally, the Goh-Barabási index identifies systematic, scheduled business outlays, separating them from impulsive consumer retail shopping patterns.”
+> “We engineered 35 distinct behavioral features at the card profile level, structured across six independent behavioral dimensions, each backed by a clear economic driver. The strongest predictors center on B2B exposure metrics, tracking transaction density within wholesale and commercial MCC blocks. This core B2B profile relies on an expert-curated basket of 43 MCC categories that avoids data-driven target leakage; for example, MCC 5122 was intentionally excluded because it was perfectly correlated with business labels in the sample. Furthermore, we leverage Herfindahl-Hirschman Indices and Shannon Entropy to quantify merchant concentration, separating diversified corporate procurement from narrow consumer habits. Finally, the Goh-Barabási index identifies systematic, scheduled business outlays, separating them from impulsive consumer retail shopping patterns.”
 
 ### Quality Metrics Evaluation (Part 2)
 
 > **Core Talking Points for the Evaluation Committee:**
 >
-> “Our evaluation relies on three complementary metrics: ROC-AUC, PR-AUC, and the $F_1$-score. ROC-AUC maps directly to the Wilcoxon rank statistic, capturing the exact probability of correct instance ranking. PR-AUC explicitly adjusts for underlying class imbalances, evaluated against an uninformative baseline floor of 0.20. The $F_1$-score leverages a harmonic mean to penalize imbalances between precision and recall, ensuring hidden vulnerabilities cannot be masked. All models register perfect performance profiles on this validation layout, which is standard for cleanly generated synthetic data.”
+> “Our evaluation relies on three complementary metrics: ROC-AUC, PR-AUC, and the $F_1$-score. ROC-AUC maps directly to the Wilcoxon rank statistic, capturing the exact probability of correct instance ranking. PR-AUC explicitly adjusts for underlying class imbalances, evaluated against an uninformative baseline floor of ≈ 0.238 (the business prevalence here). The $F_1$-score leverages a harmonic mean to penalize imbalances between precision and recall, ensuring hidden vulnerabilities cannot be masked. All models register perfect performance profiles on this validation layout, which is standard for cleanly generated synthetic data.”
 
 ### Threshold Configuration Strategies (Part 3)
 
@@ -760,7 +760,7 @@ The notebook ships a self-contained appendix that operationalizes the theory abo
 
 > **Response:** “For tabular datasets scaled within a 35-feature topology, gradient boosted tree architectures like LightGBM consistently represent state-of-the-art performance. Extensive empirical benchmarks (such as Grinsztajn et al., 2022; Shwartz-Ziv & Armon, 2022) confirm that ensemble tree methods regularly outperform deep learning architectures on medium-sized tabular layouts. Additionally, LightGBM integrates natively with SHAP frameworks to provide full explainability, which is a critical regulatory compliance requirement for banking systems.”
 
-### Question 3: "What criteria dictated the inclusion of exactly 40 MCC codes within the B2B basket?"
+### Question 3: "What criteria dictated the inclusion of exactly 43 MCC codes within the B2B basket?"
 
 > **Response:** “The selection was derived entirely from the official semantic definitions of the MCC codes, focusing on wholesale trade, corporate logistics, and professional business support channels. We intentionally avoided data-driven statistical filters to eliminate data leakage risks. This approach is why MCC 5122 was excluded: it was perfectly correlated with business labels in this sample, and including it would introduce artificial predictive inflation.”
 
@@ -782,7 +782,7 @@ The notebook ships a self-contained appendix that operationalizes the theory abo
 
 ### Question 8: "What are the computational complexity constraints of this algorithm?"
 
-> **Response:** “The feature engineering pipeline runs at $O(N \log N)$ complexity, where $N$ represents total transaction volume, driven primarily by sorting operations for gap statistics. LightGBM inference scales at $O(T \cdot D)$ per record, where $T = 400$ trees and $D = 6$ represents average tree depth. Processing a 100,000-card portfolio requires less than 1 second of total inference time, making it highly scalable for production environments.”
+> **Response:** “The feature engineering pipeline runs at $O(N \log N)$ complexity, where $N$ represents total transaction volume, driven primarily by sorting operations for gap statistics. LightGBM inference scales at $O(T \cdot D)$ per record, where $T = 400$ trees and $D = 6$ represents average tree depth. Processing the full 105,000-card portfolio takes well under a second of inference time, making it scalable for monthly batch deployment.”
 
 ---
 

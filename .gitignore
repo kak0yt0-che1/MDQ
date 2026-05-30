@@ -17,6 +17,10 @@ business_cards_MDQ.parquet
 # CatBoost auto-generated training logs (from archived experiments)
 catboost_info/
 
+# IDE settings
+.vscode/
+.idea/
+
 # OS
 .DS_Store
 Thumbs.db
