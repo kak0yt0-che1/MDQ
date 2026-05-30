@@ -697,6 +697,158 @@ md("""
 """)
 
 
+# ----- Appendix. statistical robustness ---------------------------------
+md("""
+## Appendix. Statistical robustness
+
+Four checks that back the headline numbers, in the same spirit as a defense
+write-up: confidence intervals on AUC, formal significance tests for the top
+features, calibration of the LightGBM probabilities, and the Bayesian
+threshold-vs-expected-loss view.
+""")
+
+# --- A1. bootstrap CI for AUC / PR-AUC ----------------------------------
+md("""
+### A1. Bootstrap 95 % CI for ROC-AUC and PR-AUC
+
+Non-parametric bootstrap on the validation set (B = 1000 resamples).
+On synthetic data the interval collapses to [1.0, 1.0], which is the right
+sanity check — it tells us the AUC = 1.0 is not a one-off lucky split.
+""")
+code(r"""
+rng = np.random.default_rng(SEED)
+n = len(yva)
+B = 1000
+auc_b = np.empty(B); pr_b = np.empty(B)
+for b in range(B):
+    idx = rng.integers(0, n, n)
+    yi, pi = yva[idx], pva[idx]
+    if yi.min() == yi.max():
+        auc_b[b] = np.nan; pr_b[b] = np.nan
+        continue
+    auc_b[b] = roc_auc_score(yi, pi)
+    pr_b[b]  = average_precision_score(yi, pi)
+auc_b = auc_b[~np.isnan(auc_b)]; pr_b = pr_b[~np.isnan(pr_b)]
+print(f"ROC-AUC  point={roc_auc_score(yva, pva):.4f}  "
+      f"95% CI=[{np.quantile(auc_b, .025):.4f}, {np.quantile(auc_b, .975):.4f}]")
+print(f"PR-AUC   point={average_precision_score(yva, pva):.4f}  "
+      f"95% CI=[{np.quantile(pr_b, .025):.4f}, {np.quantile(pr_b, .975):.4f}]")
+""")
+
+# --- A2. feature significance tests -------------------------------------
+md("""
+### A2. Welch's t-test, Mann-Whitney U, Cohen's d (top features)
+
+Univariate AUC tells us which features rank cards well, but it doesn't give a
+p-value or an effect size. For the top 8 SHAP drivers we report Welch's t (means
+under unequal variance), Mann-Whitney U (rank-based, robust to heavy tails) and
+Cohen's d (standardized effect size). All three should agree at this scale.
+""")
+code(r"""
+from scipy import stats
+
+top_feats = glob.head(8).index.tolist()
+rows = []
+for f in top_feats:
+    a = feat.loc[feat[LABEL_COL] == 0, f].values
+    b = feat.loc[feat[LABEL_COL] == 1, f].values
+    t, p_t = stats.ttest_ind(a, b, equal_var=False)
+    u, p_u = stats.mannwhitneyu(a, b, alternative="two-sided")
+    # pooled-SD Cohen's d (Welch variant)
+    sd = np.sqrt((a.var(ddof=1) + b.var(ddof=1)) / 2)
+    d = (b.mean() - a.mean()) / sd if sd > 0 else np.nan
+    rows.append({"feature": f, "consumer_mean": a.mean(), "business_mean": b.mean(),
+                 "welch_t": t, "t_pvalue": p_t, "mw_pvalue": p_u, "cohens_d": d})
+sig = pd.DataFrame(rows).set_index("feature")
+for c in ["t_pvalue", "mw_pvalue"]:
+    sig[c] = sig[c].map(lambda x: f"{x:.2e}")
+display(sig.round(3))
+""")
+
+# --- A3. calibration ----------------------------------------------------
+md("""
+### A3. Calibration — reliability diagram + ECE, Platt scaling check
+
+LightGBM is a margin model: raw `predict_proba` is monotonic but not necessarily
+calibrated. We compute the Expected Calibration Error and fit a Platt-scaling
+overlay on the train-OOF scores to see whether calibration helps.
+On this data the gap is tiny because almost every score is at 0 or 1, but the
+mechanism is shown.
+""")
+code(r"""
+from sklearn.calibration import calibration_curve
+from sklearn.linear_model import LogisticRegression as LR
+
+def ece(y, p, n_bins=10):
+    bins = np.linspace(0, 1, n_bins + 1)
+    idx = np.clip(np.digitize(p, bins) - 1, 0, n_bins - 1)
+    n = len(y); e = 0.0
+    for b in range(n_bins):
+        mask = idx == b
+        if not mask.any(): continue
+        e += mask.sum() / n * abs(y[mask].mean() - p[mask].mean())
+    return e
+
+# raw LightGBM on validation
+prob_true, prob_pred = calibration_curve(yva, pva, n_bins=10, strategy="quantile")
+ece_raw = ece(yva, pva)
+
+# Platt overlay fit on TRAIN OOF, applied to validation
+oof_train = oof_proba(make_lgbm, Xtr, ytr)
+platt = LR().fit(oof_train.reshape(-1, 1), ytr)
+pva_cal = platt.predict_proba(pva.reshape(-1, 1))[:, 1]
+prob_true_c, prob_pred_c = calibration_curve(yva, pva_cal, n_bins=10, strategy="quantile")
+ece_cal = ece(yva, pva_cal)
+
+print(f"ECE raw      = {ece_raw:.4f}")
+print(f"ECE Platt    = {ece_cal:.4f}  (lower is better)")
+
+fig, ax = plt.subplots(figsize=(5, 4))
+ax.plot([0, 1], [0, 1], "--", color="grey", label="perfect")
+ax.plot(prob_pred,   prob_true,   "o-", color="#C44E52", label=f"raw (ECE={ece_raw:.3f})")
+ax.plot(prob_pred_c, prob_true_c, "s-", color="#4C72B0", label=f"Platt (ECE={ece_cal:.3f})")
+ax.set_xlabel("mean predicted P(business)"); ax.set_ylabel("empirical fraction positive")
+ax.set_title("reliability diagram")
+ax.legend(); plt.tight_layout(); plt.show()
+""")
+
+# --- A4. expected loss vs threshold -------------------------------------
+md("""
+### A4. Threshold vs expected loss (Bayesian view)
+
+If we put a cost on each error type, the optimal threshold is
+$\\tau^* = C_{FP}/(C_{FP}+C_{FN})$. With a 1 : 10 cost ratio (missed SME is
+10x more expensive than one cheap call) the optimum sits near $\\tau \\approx 0.09$.
+The plot sweeps the threshold and reports total expected loss on validation.
+""")
+code(r"""
+C_FP, C_FN = 1.0, 10.0
+tau_star = C_FP / (C_FP + C_FN)
+
+taus = np.linspace(0.001, 0.999, 199)
+losses = []
+for t in taus:
+    yhat = (pva >= t).astype(int)
+    fp = int(((yhat == 1) & (yva == 0)).sum())
+    fn = int(((yhat == 0) & (yva == 1)).sum())
+    losses.append(C_FP * fp + C_FN * fn)
+losses = np.array(losses)
+best_emp_idx = int(np.argmin(losses))
+tau_emp = taus[best_emp_idx]
+
+fig, ax = plt.subplots(figsize=(7, 3.6))
+ax.plot(taus, losses, color="#C44E52")
+ax.axvline(tau_star, ls="--", color="grey", label=f"Bayesian τ* = {tau_star:.3f}")
+ax.axvline(tau_emp,  ls=":",  color="#4C72B0",
+           label=f"empirical argmin τ = {tau_emp:.3f}")
+ax.set_xlabel("threshold τ"); ax.set_ylabel("expected loss on val")
+ax.set_title(f"loss(τ) with C_FP=1, C_FN={int(C_FN)}")
+ax.legend(); plt.tight_layout(); plt.show()
+print(f"min expected loss = {losses[best_emp_idx]:.1f} at τ = {tau_emp:.3f}")
+print(f"loss at Bayesian τ* = {losses[np.argmin(np.abs(taus - tau_star))]:.1f}")
+""")
+
+
 # ----- 17. inference recipe ---------------------------------------------
 md("""
 ## 17. Scoring a new test set

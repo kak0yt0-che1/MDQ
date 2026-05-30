@@ -60,7 +60,7 @@ CV is a dimensionless measure of relative variability. For business cards, $CV$ 
 ### Economic Justification
 
 Business cards demonstrate:
-- **A higher median ticket** (`amt_median` ↑ 3.99× according to SHAP): commercial procurement tasks dwarf everyday domestic retail purchases.
+- **A higher median ticket** (`amt_median` business/consumer mean ratio ≈ 3.99×, SHAP |impact| ≈ 0.05): commercial procurement tasks dwarf everyday domestic retail purchases.
 - **Higher variance in transaction amounts**: covering a diverse spectrum from cheap stationery up to large wholesale lots.
 - **Greater overall transaction count**: due to frequent, recurring operational expenditures.
 
@@ -76,7 +76,7 @@ For features characterized by heavy tails (such as total transaction amounts), t
 
 $$U = \sum_{i=1}^{n_1}\sum_{j=1}^{n_2} \mathbf{1}[X_i > Y_j]$$
 
-📌 **For the slide:** *Business cards display higher spending volume, larger tickets, and greater overall variance. The median transaction amount is nearly 4 times higher for businesses (SHAP lift 3.99×). All observed discrepancies are statistically significant ($p \ll 0.001$).*
+📌 **For the slide:** *Business cards display higher spending volume, larger tickets, and greater overall variance. The median transaction amount is nearly 4× higher for businesses (b/c mean ratio = 3.99). All observed discrepancies are statistically significant ($p \ll 0.001$, Cohen's $d > 1.0$ — see Appendix A2 in the notebook).*
 
 ---
 
@@ -147,19 +147,19 @@ $\hat{p}_{B2B}(c)$ behaves as a consistent estimator of the true underlying cond
 
 $$\hat{p}_{B2B}(c) \xrightarrow{n_c \to \infty} P(\text{MCC} \in \mathcal{M}_{B2B} \mid \text{card} = c)$$
 
-### SHAP Results and Economic Meaning
+### Class-mean Contrast and SHAP Importance
 
-This stands out as the **most critical feature group** across the entire SHAP analysis:
+Two complementary views — how strongly the class means differ (b/c ratio) and how much the feature actually moves the model's output (mean |SHAP|):
 
-| Feature | SHAP lift (vs consumer baseline) |
-|---------|--------------------------------|
-| `b2b_mcc_share` | **8.37×** |
-| `b2b_amt_share` | **7.73×** |
-| `b2b_unique_merchants` | **6.70×** |
+| Feature | business / consumer mean ratio | SHAP global mean \|impact\| |
+|---------|-------------------------------:|---------------------------:|
+| `b2b_mcc_share`        | **9.15×** | 0.06 |
+| `b2b_amt_share`        | **8.06×** | 0.31 |
+| `b2b_unique_merchants` | **6.70×** | **1.37** |
 
-While consumers interact almost exclusively with downstream retail outlets, entrepreneurs deal directly with upstream wholesalers and professional SaaS/B2B networks. The `b2b_unique_merchants` metric captures the **breadth of the supplier footprint**: a card transacting across 5+ unique wholesale suppliers strongly implies ongoing, systematic procurement operations.
+Note: B2B exposure dominates the **class-mean contrast** (the largest single ratios in the entire feature table), but `b2b_unique_merchants` is the only B2B feature in the SHAP top-5 — once the model knows the count of distinct B2B suppliers, the per-transaction share variables add little marginal signal. Consumers interact almost exclusively with downstream retail; entrepreneurs deal with upstream wholesalers and professional SaaS/B2B networks. A card transacting across 5+ unique wholesale suppliers strongly implies ongoing, systematic procurement.
 
-📌 **For the slide:** *B2B exposure is the absolute strongest predictor of hidden corporate behavior (SHAP lift up to 8.37×). It leverages a domain-specific basket of 40 MCCs independent of the underlying dataset. MCC 5122 was dropped to block target leakage.*
+📌 **For the slide:** *B2B exposure is the strongest class-mean separator in the feature table (`b2b_mcc_share` ratio = 9.15×). After the model fit, `b2b_unique_merchants` (supplier breadth) is the B2B variable that carries the SHAP weight. The basket is curated from MCC semantics, with 5122 excluded to block target leakage.*
 
 ---
 
@@ -237,11 +237,11 @@ The corresponding variance of the estimator behaves as $\text{Var}(\hat{p}) = \f
 
 ### Economic Justification
 
-- **recurring_share** (SHAP lift 4.92×): businesses systematically set up automated payment schedules for critical software, operational services, rent, and recurring logistics pipelines.
-- **recurring_capable_share** (SHAP lift 4.54×): captures frequent interactions with cloud providers, digital infrastructure, or SaaS subscriptions—identifying vendors designed to handle automated corporate pipelines, even if a specific baseline transaction lacks an active flag.
-- **tokenized_share**: recurring online tokenization profiles typically map to ongoing commercial digital checkout systems.
+- **recurring_share** (b/c mean ratio = 4.92×, SHAP |impact| = 0.30): businesses systematically set up automated payment schedules for critical software, operational services, rent, and recurring logistics pipelines.
+- **recurring_capable_share** (b/c mean ratio = 4.54×, SHAP |impact| = 0.58): captures frequent interactions with cloud providers, digital infrastructure, or SaaS subscriptions — identifying vendors designed to handle automated corporate pipelines, even if a specific baseline transaction lacks an active flag.
+- **tokenized_share** (b/c mean ratio = 1.52×, SHAP |impact| = **1.77**, top-2 globally): tokenized digital checkout systems are the second most influential single signal in the model.
 
-📌 **For the slide:** *Recurring behaviors represent the second most predictive model component (lift 4.92×). Corporate entities systematically automate overhead billing (SaaS, warehouse leasing, utilities), a trait rarely duplicated in standard retail portfolios.*
+📌 **For the slide:** *Recurring and tokenized behaviors are a major model component. The class means differ by ~4.9× on `recurring_share`; on the model side, `tokenized_share` (SHAP |impact| = 1.77) and `recurring_capable_share` (0.58) carry the weight, reflecting the corporate cadence of automated overhead billing.*
 
 ---
 
@@ -303,22 +303,43 @@ Commercial portfolios exhibit steady, predictable baseline monthly outlays (low 
 
 ---
 
-## 1.8 Summary Table: All 35 Features
+## 1.8 Summary Tables: Two Importance Rankings
 
-| # | Feature | Behavioral Group | Metric Type | SHAP lift |
-|---|---------|--------|-----|-----------|
-| 1 | `b2b_mcc_share` | B2B Exposure | Ratio | **8.37×** |
-| 2 | `b2b_amt_share` | B2B Exposure | Ratio | **7.73×** |
-| 3 | `b2b_unique_merchants` | B2B Exposure | Counter | **6.70×** |
-| 4 | `recurring_share` | Recurrence | Ratio | **4.92×** |
-| 5 | `recurring_capable_share` | Recurrence | Ratio | **4.54×** |
-| 6 | `amt_median` | Spending Volume | Currency Amount | **3.99×** |
-| 7–8 | `merchant_hhi`, `merchant_entropy` | Concentration | Index Metric | — |
-| 9 | `burstiness` | Activity Profile | Index Metric | — |
-| 10 | `bizhours_share` | Temporal Profile | Ratio | — |
-| 11–35 | Remaining 25 features | All Groups | Various | — |
+We report **two** rankings because they answer different questions, and the documentation has historically confused them. Both are computed against the same labeled population (105 k cards).
 
-📌 **For the slide:** *The top 6 SHAP feature rankings are anchored across three independent pillars: B2B exposure, payment recurrence, and volume scale. Crucially, no explicitly leaky institutional variables (such as card tier or bank name) are integrated.*
+### 1.8.a Class-mean contrast (business / consumer mean ratio)
+
+"By how much do the two classes differ on this feature, before any model is fit?"
+
+| # | Feature | Group | b / c mean ratio |
+|---|---------|-------|------------------:|
+| 1 | `b2b_mcc_share`            | B2B Exposure  | **9.15×** |
+| 2 | `b2b_amt_share`            | B2B Exposure  | **8.06×** |
+| 3 | `b2b_unique_merchants`     | B2B Exposure  | **6.70×** |
+| 4 | `recurring_share`          | Recurrence    | **4.92×** |
+| 5 | `recurring_capable_share`  | Recurrence    | **4.54×** |
+| 6 | `amt_median`               | Spending      | **3.99×** |
+| 7 | `burstiness`               | Activity      | 3.12× |
+| 8 | `amt_mean`                 | Spending      | 3.06× |
+
+### 1.8.b SHAP global mean \|impact\| (top 8, top 15 in the notebook)
+
+"How much does the feature actually move the LightGBM output, once the model has access to the others?"
+
+| # | Feature | Group | mean \|SHAP\| |
+|---|---------|-------|--------------:|
+| 1 | `evening_share`            | Temporal     | **2.66** |
+| 2 | `tokenized_share`          | Recurrence   | **1.77** |
+| 3 | `online_share`             | Temporal     | **1.37** |
+| 4 | `b2b_unique_merchants`     | B2B          | **1.37** |
+| 5 | `weekend_share`            | Temporal     | 1.10 |
+| 6 | `recurring_capable_share`  | Recurrence   | 0.58 |
+| 7 | `b2b_amt_share`            | B2B          | 0.31 |
+| 8 | `recurring_share`          | Recurrence   | 0.30 |
+
+The two rankings disagree on purpose. The B2B share features have the largest *raw* class gap, but once the model knows the **count of distinct B2B suppliers** plus the **temporal signature** (evening / online / weekend share) and **tokenized share**, the additional B2B share variables become marginal. This is healthy — it shows the model is using multiple independent behavioral pillars, not single-feature leakage.
+
+📌 **For the slide:** *Two complementary views — class-mean contrast (raw separability) and SHAP impact (model usage). B2B exposure dominates the contrast view; temporal pattern + tokenization + B2B supplier breadth dominate the SHAP view. No leaky institutional fields (`card_tier`, `bank_name`) are used.*
 
 ---
 
@@ -474,11 +495,11 @@ The optimal operational threshold automatically shifts **downward**, optimizing 
 
 We deploy three specialized operational thresholds to match core business workflows:
 
-| Selected Threshold | Metric Profile | Target Workflow | Core System Logic |
+| Selected Threshold | Definition | Target Workflow | Core System Logic |
 |-------|----------|------------|--------|
-| F1-max | $\tau_{F1}$ | Automatic Portfolio Migration | Equalized Precision and Recall trade-off |
-| Recall $\geq$ 0.95 | $\tau_{recall}$ | High-Volume Outreach Campaigns | Minimizes missed commercial targets |
-| Lead Cutoff | $\tau = 0.30$ | Lead Generation Extraction | Locks target auditing to $P(\text{business}) \geq 0.30$ |
+| F1-max         | $\tau_{F1}$ that maximizes $F_1$ on train-OOF | Automated portfolio migration | Equalized precision / recall trade-off |
+| Outreach       | smallest $\tau$ with precision $\geq 0.50$ on train-OOF | RM call lists / outreach campaigns | Largest viable lead pool above a precision floor (missed SME costs more than a cheap call) |
+| Lead cutoff    | $\tau = 0.30$ (fixed business rule) | Lead-generation extraction | Locks target auditing to $P(\text{business}) \geq 0.30$ |
 
 📌 **For the slide:** *The optimal operational threshold is defined by $\tau^* = C_{FP}/(C_{FP} + C_{FN})$. As the cost of missed detections increases, the threshold falls to boost recall. We maintain three distinct operational thresholds for three business use cases.*
 
@@ -569,10 +590,11 @@ Assuming baseline parameters $C_{FP} = 1$, $C_{FN} = 10$, $N_- = 80,000$, and $N
 
 | Operating Threshold | FP Count | FN Count | Global Expected Loss ($\mathcal{L}$) |
 |---------------------|----------|----------|----------------------------------------|
-| F1-max Optimization | ~2 | ~2 | $1 \cdot 2 + 10 \cdot 2 = 22$ |
-| High Recall Optimization ($\geq$ 0.95) | ~5 | ~1 | $1 \cdot 5 + 10 \cdot 1 = 15$ |
+| F1-max ($\tau \approx 0.32$)            | 0 | 1 | $1 \cdot 0 + 10 \cdot 1 = 10$ |
+| Outreach ($\tau \approx 2 \cdot 10^{-6}$, prec $\geq 0.5$) | 5 | 0 | $1 \cdot 5 + 10 \cdot 0 = 5$ |
+| Empirical argmin ($\tau \approx 0.016$) | 4 | 0 | $1 \cdot 4 + 10 \cdot 0 = 4$ |
 
-When asymmetric error costs apply ($C_{FN} \gg C_{FP}$), configuring operations for a high-recall threshold yields **lower global expected financial losses**.
+When asymmetric error costs apply ($C_{FN} \gg C_{FP}$), the operating point with lower threshold (more recall, more FPs traded for fewer FNs) wins the loss budget. See **Appendix A4** in the notebook for the full $\mathcal{L}(\tau)$ sweep, with the Bayesian optimum $\tau^* = C_{FP}/(C_{FP}+C_{FN}) = 1/11 \approx 0.091$ marked.
 
 📌 **For the slide:** *Expected Loss = $C_{FP} \cdot \text{FP} + C_{FN} \cdot \text{FN}$. When the costs of missed detections dominate ($C_{FN} \gg C_{FP}$), the threshold optimized for higher recall scores minimizes global operational losses.*
 
@@ -683,6 +705,21 @@ $$\left[B^{-1}(0.025;\ k,\ n-k+1),\quad B^{-1}(0.975;\ k+1,\ n-k)\right]$$
 
 ---
 
+## 4.5 What the Notebook Actually Computes (Appendix A1–A4)
+
+The notebook ships a self-contained appendix that operationalizes the theory above:
+
+| Notebook section | What it does | Result on this data |
+|---|---|---|
+| **A1.** Bootstrap CI for ROC-AUC and PR-AUC | 1000 resamples of the validation set | both intervals collapse to [1.0000, 1.0000] → AUC = 1 is not a lucky split |
+| **A2.** Welch's $t$, Mann–Whitney $U$, Cohen's $d$ | for the SHAP top-8 features | $p < 10^{-300}$ for all, $|d| \in [1.6, 4.8]$ (all "very large" effects) |
+| **A3.** Calibration (reliability diagram + ECE) | raw LightGBM vs Platt overlay fit on train-OOF | ECE_raw = 0.0001, ECE_Platt = 0.0005 — already well-calibrated, Platt mostly a placeholder for real-data deployment |
+| **A4.** Expected loss vs threshold ($C_{FP}=1, C_{FN}=10$) | sweep $\tau \in [0, 1]$ | empirical argmin at $\tau \approx 0.016$ with $\mathcal{L} = 4$; Bayesian $\tau^* = 0.091$ gives $\mathcal{L} = 10$ |
+
+📌 **For the slide:** *Every claim in Part 2–4 of this document is backed by a runnable cell in the notebook's Appendix. Bootstrap collapses AUC's CI to [1, 1], all top features are significant at $p < 10^{-300}$ with very large effect sizes, the model is already well-calibrated (ECE = 0.0001), and the expected-loss curve confirms the recall-leaning operating choice.*
+
+---
+
 # Part 5. Presentation Defense Tips
 
 ## 5.1 Key Takeaways for Each Section
@@ -703,7 +740,7 @@ $$\left[B^{-1}(0.025;\ k,\ n-k+1),\quad B^{-1}(0.975;\ k+1,\ n-k)\right]$$
 
 > **Core Talking Points for the Evaluation Committee:**
 >
-> “Operational thresholds are optimized using out-of-fold predictions across training sets to prevent data contamination and ensure unbiased validation metrics. We establish three distinct thresholds tailored to specific business use cases: an $F_1$-max configuration for automated portfolio updates, a high-recall setting ($\ge 0.95$) for outreach campaigns, and a conservative 0.30 cutoff for sales lead generation. This 0.30 cutoff is justified by Bayesian decision theory, optimizing risk exposure when missing a commercial account is valued at 2.3 times more costly than an unnecessary verification check.”
+> “Operational thresholds are optimized using out-of-fold predictions on the training set, so the validation set remains untouched and the headline metrics stay unbiased. We establish three distinct thresholds tailored to specific business use cases: an $F_1$-max configuration for automated portfolio updates, an *outreach* threshold defined as the smallest cutoff whose precision still exceeds 0.50 (the largest viable lead pool), and a fixed 0.30 cutoff for sales lead generation. The 0.30 cutoff is justified by Bayesian decision theory: it is the optimal threshold under a 2.3 : 1 cost ratio between a missed commercial account and an unnecessary verification check.”
 
 ### Error and Calibration Tracking (Part 4)
 
